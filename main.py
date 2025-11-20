@@ -22,21 +22,36 @@ selected_stock = st.selectbox("Sélectionnez l'action à analyser", stocks)
 n_years = st.slider("Années de prédiction:", 1, 4)
 period = n_years * 365
 
-# --- Chargement des données ---
+# --- Chargement des données (VERSION CORRIGÉE) ---
 @st.cache_data
 def load_data(ticker):
+    # On télécharge les données
     data = yf.download(ticker, START, TODAY)
-    # Yfinance met la date en index, on la remet en colonne pour Prophet
+    
+    # CORRECTION 1 : Gestion du MultiIndex de yfinance
+    # Si les colonnes ont deux niveaux (ex: Price et Ticker), on aplatit pour garder juste "Close", "Open", etc.
+    if hasattr(data.columns, 'nlevels') and data.columns.nlevels > 1:
+        data.columns = data.columns.droplevel(1)
+    
+    # On remet la date en colonne normale
     data.reset_index(inplace=True)
+    
+    # CORRECTION 2 : Gestion des Timezones
+    # Prophet supporte mal les dates avec fuseau horaire, on les retire
+    if 'Date' in data.columns:
+        data['Date'] = data['Date'].dt.tz_localize(None)
+        
     return data
 
 data_load_state = st.text("Chargement des données...")
 data = load_data(selected_stock)
 data_load_state.text("Chargement des données... Terminé !")
 
-# --- Affichage des données brutes ---
-st.subheader(f'Données brutes pour {selected_stock}')
-st.write(data.tail()) # Affiche les 5 dernières lignes
+# Vérification de sécurité : Si aucune donnée n'est trouvée, on arrête là
+if data.empty:
+    st.error("Erreur : Aucune donnée récupérée pour cette action. Essayez un autre symbole.")
+    st.stop()
+
 
 # Graphique des prix d'ouverture et de fermeture
 def plot_raw_data():
